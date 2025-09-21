@@ -1,0 +1,145 @@
+name: 🚀 Release
+
+permissions:
+  contents: write
+  actions: write
+  attestations: write
+  pages: write
+  id-token: write
+
+"on":
+  workflow_dispatch:
+    inputs:
+      automatic_tag:
+        description: 'Automatically increment version and construct tag'
+        required: true
+        default: true
+        type: boolean
+      latest:
+        description: 'Also create/update the "latest" tag for this backend'
+        required: true
+        default: true
+        type: boolean
+      bump:
+        description: 'If Automatic Tag is enabled, select which part to bump'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+      version:
+        description: 'Release version (e.g., v1.5.0). Ignored if Automatic Tag is enabled.'
+        required: false
+        type: string
+
+jobs:
+  validate-inputs:
+    name: 🔍 Validate Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      latest: ${{ steps.validate.outputs.latest }}
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v5
+      - name: Fetch all tags
+        run: git fetch --tags --force
+      - name: 🔍 Validate version format
+        id: validate
+        run: |
+          version="${{ github.event.inputs.version }}"
+          latest="${{ github.event.inputs.latest }}"
+          automatic_tag="${{ github.event.inputs.automatic_tag }}"
+          bump="${{ github.event.inputs.bump }}"
+          backend_name="core" # Change this if you want to support per-backend tagging
+
+          # Determine version
+          if [[ "$automatic_tag" == "true" ]]; then
+            # Find latest tag for this backend
+            if [[ "$backend_name" == "core" ]]; then
+              prefix="v"
+              latest_tag=$(git tag --list "v*" | sort -V | tail -n1)
+            else
+              prefix="${backend_name}/v"
+              latest_tag=$(git tag --list "${backend_name}/v*" | sed "s|^${backend_name}/||" | sort -V | tail -n1)
+            fi
+
+            if [[ -z "$latest_tag" ]]; then
+              new_version="v1.0.0"
+            else
+              tag_version="${latest_tag#${prefix}}"
+              IFS='.' read -r major minor patch <<<"${tag_version#v}"
+              case "$bump" in
+                major)
+                  major=$((major+1)); minor=0; patch=0
+                  ;;
+                minor)
+                  minor=$((minor+1)); patch=0
+                  ;;
+                patch|*)
+                  patch=$((patch+1))
+                  ;;
+              esac
+              new_version="v${major}.${minor}.${patch}"
+            fi
+            version="$new_version"
+            echo "🔢 Automatic tag enabled. New version: $version"
+          else
+            # Manual version
+            if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "❌ Error: Version must follow semantic versioning format (e.g., v1.5.0)"
+              exit 1
+            fi
+            echo "🔢 Manual version: $version"
+          fi
+
+          echo "✅ Version format is valid: $version"
+          echo "🏷️ Mark as latest: $latest"
+
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "latest=$latest" >> $GITHUB_OUTPUT
+  lint:
+    name: 🧹 Run Go Lint
+    needs: [validate-inputs]
+    if: needs.validate-inputs.result == 'success'
+    uses: ./.github/workflows/go-lint.yml
+
+  test:
+    name: 🧪 Run Go Tests
+    needs: [validate-inputs]
+    if: needs.validate-inputs.result == 'success'
+    uses: ./.github/workflows/go-test.yml
+
+  create-tags:
+    name: 🏷️ Create and Push Tags
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, lint, test]
+    if: always() && !cancelled() && needs.validate-inputs.result == 'success' && needs.lint.result == 'success' && needs.test.result == 'success'
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Create main project tag
+        run: |
+          version="${{ needs.validate-inputs.outputs.version }}"
+          
+          # Check if tag already exists
+          if git tag -l | grep -q "^${version}$"; then
+            echo "⚠️ Tag $version already exists for main project"
+          else
+            git tag "$version"
+            echo "✅ Created main project tag: $version"
+          fi
+
+      - name: 🚀 Push main project tag
+        run: |
+          version="${{ needs.validate-inputs.outputs.version }}"
+          
+          echo "Pushing main project tag..."
+          git push origin "$version" || echo "⚠️ Main project tag $version may already exist remotely"
+          echo "📤 Pushed main project tag: $version"
