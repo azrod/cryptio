@@ -238,3 +238,16 @@ For maximum security, always use a **strong passphrase** as the root secret. The
 - For most modern backends, `SecurityStandard` is enough, unless you have specific legal or industry requirements.
 
 ---
+
+## ⚠️ Security Notice  
+
+Always have your cryptographic choices, parameters, and implementation reviewed and approved by your organization’s security team before deploying to production.  
+Security requirements may vary depending on your context and regulations.
+
+**Disclaimer:**  
+> This software is provided “as is”, without warranty of any kind, express or implied.  
+> The authors and contributors are not responsible for any damages or losses resulting from the use or misuse of this library.  
+> You are solely responsible for evaluating its suitability and security for your use case.
+
+**Security Reporting:**  
+> If you discover a security issue or vulnerability, please refer to [SECURITY.md](./SECURITY.md) for instructions on how to report it responsibly.
