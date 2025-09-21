@@ -7,8 +7,8 @@
 
 **cryptio** is a Go library for symmetric encryption with Argon2id key derivation, offering multiple security levels and resource usage profiles suitable for a wide range of use cases.
 
-> **Minimal & trusted dependencies:**  
-> cryptio relies only on official Go cryptography libraries ([golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto)) for robust, up-to-date security. No third-party or non-standard dependencies.
+**Minimal & trusted dependencies:**  
+cryptio relies only on official Go cryptography libraries ([golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto)) for robust, up-to-date security. No third-party or non-standard dependencies.
 
 <br/>
 <br/>
