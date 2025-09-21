@@ -1,13 +1,17 @@
 <img align="left" width="250"  src="logo-cryptio.png" alt="Cryptio Logo" />
 
-# cryptio
+[![Go Reference](https://img.shields.io/badge/Go-Reference-%2300ADD8.svg?&logo=go&logoColor=white&style=for-the-badge)](https://pkg.go.dev/github.com/azrod/cryptio)
+[![Go Report Card](https://goreportcard.com/badge/github.com/azrod/cryptio?style=for-the-badge)](https://goreportcard.com/report/github.com/azrod/cryptio)
+[![License: MIT](https://img.shields.io/github/license/azrod/cryptio?style=for-the-badge)](LICENSE)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/azrod/cryptio?style=for-the-badge)
 
 **cryptio** is a Go library for symmetric encryption with Argon2id key derivation, offering multiple security levels and resource usage profiles suitable for a wide range of use cases.
 
 > **Minimal & trusted dependencies:**  
 > cryptio relies only on official Go cryptography libraries ([golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto)) for robust, up-to-date security. No third-party or non-standard dependencies.
 
----
+<br/>
+<br/>
 
 ## 🔑 Security Levels & Profiles
 
