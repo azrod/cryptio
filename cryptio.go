@@ -167,8 +167,8 @@ var securityLevels = map[SecurityLevel]securityParams{
 
 // --- Combination logic ---
 
-// max is a generic function that returns the maximum of two comparable numbers.
-func max[T ~int | ~uint8 | ~uint32](a, b T) T {
+// maxPamaxParamram is a generic function that returns the maximum of two comparable numbers.
+func maxParam[T ~int | ~uint8 | ~uint32](a, b T) T {
 	if a > b {
 		return a
 	}
@@ -190,12 +190,12 @@ func mergeParams(level SecurityLevel, profile Argon2Profile) (securityParams, er
 	}
 
 	// Combine: choose the maximum value for each security-relevant field
-	base.ArgonTime = max(p.ArgonTime, l.ArgonTime)
-	base.ArgonMem = max(p.ArgonMem, l.ArgonMem)
-	base.ArgonThreads = max(p.ArgonThreads, l.ArgonThreads)
-	base.SaltSize = max(p.SaltSize, l.SaltSize)
-	base.KeySize = max(p.KeySize, l.KeySize)
-	base.NonceSize = max(p.NonceSize, l.NonceSize)
+	base.ArgonTime = maxParam(p.ArgonTime, l.ArgonTime)
+	base.ArgonMem = maxParam(p.ArgonMem, l.ArgonMem)
+	base.ArgonThreads = maxParam(p.ArgonThreads, l.ArgonThreads)
+	base.SaltSize = maxParam(p.SaltSize, l.SaltSize)
+	base.KeySize = maxParam(p.KeySize, l.KeySize)
+	base.NonceSize = maxParam(p.NonceSize, l.NonceSize)
 	return base, nil
 }
 
@@ -245,7 +245,7 @@ func (c *Client) EncryptRaw(plaintext []byte) ([]byte, error) {
 		return nil, err
 	}
 	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-	finalData := append(append(salt, nonce...), ciphertext...)
+	finalData := append(append(salt, nonce...), ciphertext...) //nolint:makezero
 	return finalData, nil
 }
 
