@@ -38,7 +38,7 @@ jobs:
         run: go mod download
 
       - name: 🧪 Run main package tests with coverage
-        run: go test -v -timeout=300s -coverprofile=coverage-main.out ./pkg/...
+        run: go test -v -timeout=300s -coverprofile=coverage-main.out ./...
 
       - name: 📤 Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
