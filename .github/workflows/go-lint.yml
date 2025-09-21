@@ -1,0 +1,48 @@
+name: Go Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  lint-main:
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.24, 1.25]
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v5
+
+      - name: 🏗️ Set up Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: 📥 Install golangci-lint and run on main package
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: .
+          args: --timeout=5m ./pkg/...
+
+  lint-summary:
+    if: github.actor != 'dependabot[bot]' && always()
+    runs-on: ubuntu-latest
+    needs: [lint-main]
+    steps:
+      - name: 🔍 Generate lint summary
+        run: |
+          echo "## 🔍 Lint Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Main Package" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.lint-main.result }}" = "success" ]; then
+            echo "✅ Main package linting passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.lint-main.result }}" = "failure" ]; then
+            echo "❌ Main package linting failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏸️ Main package linting skipped" >> $GITHUB_STEP_SUMMARY
+          fi
