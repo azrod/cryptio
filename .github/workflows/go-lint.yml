@@ -27,7 +27,7 @@ jobs:
         with:
           version: latest
           working-directory: .
-          args: --timeout=5m ./pkg/...
+          args: --timeout=5m ./...
 
   lint-summary:
     if: github.actor != 'dependabot[bot]' && always()
