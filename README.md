@@ -92,6 +92,23 @@ BenchmarkEncryptDecrypt_AllCombinations/Extreme+CPUHeavy-10                    1
 
 </details>
 
+### Technical notes — units and running benchmarks
+
+- Argon2 memory parameters in the code (`ArgonMem`) are expressed in KiB (kibibytes). For example, `64 * 1024` means 65536 KiB = 64 MiB.
+- `KeySize` and `NonceSize` are expressed in bytes.
+- The benchmark numbers shown above were collected on an Apple M1 Pro machine; actual timing and memory usage will vary with CPU architecture, available RAM, and OS. Treat these results as guidance rather than absolute expectations.
+- The exhaustive benchmark includes combinations that allocate large amounts of memory (for example, `SecurityExtreme` may require ~1 GiB). Running the full suite on small CI runners or low‑memory machines can cause OOMs or very long runtimes.
+- To avoid heavy runs in CI, the exhaustive benchmark is optional. The benchmark file skips exhaustive combinations when tests are run with `-short`.
+
+Suggested commands:
+
+- Quick / safe (skip heavy combos): `go test -bench . -run '^$' -benchmem`
+- Full (run exhaustive benchmarks explicitly): `go test -bench . -run '^$' -tags benchfull -benchmem`
+- Use `-short` to skip exhaustive benchmark combos in automated environments: `go test -bench . -short -run '^$'`
+
+- Reminder: the library enforces a minimum memory floor defined by the chosen `SecurityLevel`. Selecting an `Argon2Profile` will not reduce memory below that minimum; profiles can only increase memory usage or change CPU/memory trade-offs.
+
+
 ### ℹ️ Why doesn't RAM usage change by profile from Standard upwards?
 
 Starting from the **Standard** security level and above, the memory (RAM) usage remains constant for all Argon2 profiles (RAMHeavy, Balanced, Tradeoff, CPUFavor, CPUHeavy).  
