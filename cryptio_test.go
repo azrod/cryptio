@@ -124,3 +124,90 @@ func TestBase64InputOutput(t *testing.T) {
 		t.Errorf("Ciphertext is not valid base64: %v", err)
 	}
 }
+
+// Additional edge tests
+func TestEmptyPlaintext(t *testing.T) {
+	client, err := New("p", SecurityStandard, ProfileBalanced)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	ct, err := client.Encrypt("")
+	if err != nil {
+		t.Fatalf("Encrypt empty failed: %v", err)
+	}
+	pt, err := client.Decrypt(ct)
+	if err != nil {
+		t.Fatalf("Decrypt empty failed: %v", err)
+	}
+	if pt != "" {
+		t.Fatalf("expected empty, got %q", pt)
+	}
+}
+
+func TestTruncatedCiphertext(t *testing.T) {
+	client, err := New("p", SecurityStandard, ProfileBalanced)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	ct, err := client.Encrypt("hello")
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(ct)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if len(raw) <= 1 {
+		t.Fatal("cipher too small to truncate")
+	}
+	raw = raw[:len(raw)-1] // tronquer un octet
+	_, err = client.Decrypt(base64.StdEncoding.EncodeToString(raw))
+	if err == nil {
+		t.Fatal("decrypt should fail for truncated ciphertext")
+	}
+}
+
+func TestTamperedCiphertext(t *testing.T) {
+	client, err := New("p", SecurityStandard, ProfileBalanced)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	ct, err := client.Encrypt("hello")
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(ct)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if len(raw) < client.params.SaltSize+client.params.NonceSize+1 {
+		t.Fatal("cipher too small")
+	}
+	idx := client.params.SaltSize + client.params.NonceSize
+	raw[idx] ^= 0xFF
+	_, err = client.Decrypt(base64.StdEncoding.EncodeToString(raw))
+	if err == nil {
+		t.Fatal("decrypt should fail for tampered ciphertext")
+	}
+}
+
+func TestConcurrentEncrypt(t *testing.T) {
+	client, err := New("p", SecurityStandard, ProfileBalanced)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	const goroutines = 20
+	plaintext := "concurrent secret"
+	done := make(chan error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			_, err := client.Encrypt(plaintext)
+			done <- err
+		}()
+	}
+	for i := 0; i < goroutines; i++ {
+		if err := <-done; err != nil {
+			t.Fatalf("concurrent encrypt failed: %v", err)
+		}
+	}
+}

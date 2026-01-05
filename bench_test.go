@@ -28,6 +28,9 @@ func benchName(level SecurityLevel, profile Argon2Profile) string {
 }
 
 func BenchmarkEncryptDecrypt_AllCombinations(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping exhaustive benchmark in short mode")
+	}
 	plaintext := []byte("this is a secret message for benchmark")
 
 	for _, security := range allSecurityLevels {

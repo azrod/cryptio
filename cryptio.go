@@ -6,7 +6,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -167,7 +169,7 @@ var securityLevels = map[SecurityLevel]securityParams{
 
 // --- Combination logic ---
 
-// maxPamaxParamram is a generic function that returns the maximum of two comparable numbers.
+// maxParam returns the maximum of two comparable numbers.
 func maxParam[T ~int | ~uint8 | ~uint32](a, b T) T {
 	if a > b {
 		return a
@@ -202,7 +204,10 @@ func mergeParams(level SecurityLevel, profile Argon2Profile) (securityParams, er
 // --- Main API ---
 
 // Client contains the passphrase and security parameters.
+// A Client is safe for concurrent Encrypt/Decrypt calls. Calling Wipe() is
+// thread-safe but the caller must ensure no further use after wipe.
 type Client struct {
+	mu         sync.RWMutex
 	passphrase []byte
 	params     securityParams
 }
@@ -214,35 +219,65 @@ func New(passphrase string, level SecurityLevel, profile Argon2Profile) (*Client
 	if err != nil {
 		return nil, err
 	}
+	pp := []byte(passphrase)
 	return &Client{
-		passphrase: []byte(passphrase),
+		passphrase: pp,
 		params:     params,
 	}, nil
 }
 
+// Wipe clears the client's passphrase from memory. After Wipe is called, the
+// client MUST NOT be used again. This method is thread-safe.
+func (c *Client) Wipe() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.passphrase {
+		c.passphrase[i] = 0
+	}
+	c.passphrase = nil
+}
+
 // deriveKey generates a key using Argon2id from the passphrase and salt.
+// It takes a snapshot copy of the passphrase under a read lock.
 func (c *Client) deriveKey(salt []byte) []byte {
-	return argon2.IDKey(c.passphrase, salt, c.params.ArgonTime, c.params.ArgonMem, c.params.ArgonThreads, c.params.KeySize)
+	c.mu.RLock()
+	pp := make([]byte, len(c.passphrase))
+	copy(pp, c.passphrase)
+	c.mu.RUnlock()
+	defer func() {
+		for i := range pp {
+			pp[i] = 0
+		}
+	}()
+	return argon2.IDKey(pp, salt, c.params.ArgonTime, c.params.ArgonMem, c.params.ArgonThreads, c.params.KeySize)
 }
 
 // EncryptRaw encrypts a byte slice and returns the encrypted byte slice (salt+nonce+ciphertext).
 func (c *Client) EncryptRaw(plaintext []byte) ([]byte, error) {
 	salt := make([]byte, c.params.SaltSize)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt: read salt: %w", err)
 	}
 	key := c.deriveKey(salt)
+	// zero key when done
+	defer func() {
+		for i := range key {
+			key[i] = 0
+		}
+	}()
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, c.params.NonceSize)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt: new cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt: new gcm: %w", err)
+	}
+	// use gcm.NonceSize() so we match cipher expectations
+	nonceSize := gcm.NonceSize()
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("encrypt: read nonce: %w", err)
 	}
 	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
 	finalData := append(append(salt, nonce...), ciphertext...) //nolint:makezero
@@ -251,25 +286,48 @@ func (c *Client) EncryptRaw(plaintext []byte) ([]byte, error) {
 
 // DecryptRaw decrypts an encrypted byte slice (salt+nonce+ciphertext).
 func (c *Client) DecryptRaw(encryptedData []byte) ([]byte, error) {
-	minLen := c.params.SaltSize + c.params.NonceSize
-	if len(encryptedData) < minLen {
-		return nil, errors.New("invalid encrypted data")
+	// basic header length check (salt + nonce)
+	// nonce size will be resolved after creating GCM, but ensure header exists first
+	minHeader := c.params.SaltSize + c.params.NonceSize
+	if len(encryptedData) < minHeader {
+		return nil, fmt.Errorf("decrypt: invalid encrypted data: too short header (have %d, need %d)", len(encryptedData), minHeader)
 	}
+
 	salt := encryptedData[:c.params.SaltSize]
+	// use params' nonce zone for slicing, will validate against gcm's nonce size later
 	nonce := encryptedData[c.params.SaltSize : c.params.SaltSize+c.params.NonceSize]
 	ciphertext := encryptedData[c.params.SaltSize+c.params.NonceSize:]
+
 	key := c.deriveKey(salt)
+	// zero key when done
+	defer func() {
+		for i := range key {
+			key[i] = 0
+		}
+	}()
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt: new cipher: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt: new gcm: %w", err)
 	}
+
+	// ensure expected nonce size matches GCM's nonce size
+	if c.params.NonceSize != gcm.NonceSize() {
+		return nil, fmt.Errorf("decrypt: nonce size mismatch (params=%d, gcm=%d)", c.params.NonceSize, gcm.NonceSize())
+	}
+
+	// ensure ciphertext contains at least the AEAD tag
+	if len(ciphertext) < gcm.Overhead() {
+		return nil, fmt.Errorf("decrypt: ciphertext too short (have %d, need at least %d)", len(ciphertext), gcm.Overhead())
+	}
+
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt: open failed: %w", err)
 	}
 	return plaintext, nil
 }
@@ -287,7 +345,7 @@ func (c *Client) Encrypt(plaintext string) (string, error) {
 func (c *Client) Decrypt(encryptedText string) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(encryptedText)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("decrypt: base64 decode: %w", err)
 	}
 	plaintext, err := c.DecryptRaw(raw)
 	if err != nil {
