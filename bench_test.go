@@ -28,6 +28,7 @@ func benchName(level SecurityLevel, profile Argon2Profile) string {
 }
 
 func runBenchCombo(b *testing.B, security SecurityLevel, profile Argon2Profile, plaintext []byte) {
+	b.Helper()
 	client, err := New("BenchSecret", security, profile)
 	if err != nil {
 		b.Fatalf("Failed to create client: %v", err)
